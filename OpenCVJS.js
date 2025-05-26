@@ -4,6 +4,7 @@ let unityInstance = null;
 let video = null;
 let canvas = null;
 let ctx = null;
+let firstFrameSent = false;
 
 // Step 1: Send available cameras to Unity
 async function listCameras() {
@@ -36,6 +37,8 @@ async function listCameras() {
 async function StartPoseTracking(deviceId) {
     console.log("Starting pose tracking on device:", deviceId);
     selectedDeviceId = deviceId;
+    firstFrameSent = false; // reset loading trigger
+
     await setupCamera(deviceId);
     if (!detector) {
         await loadDetector();
@@ -48,6 +51,7 @@ async function setupCamera(deviceId) {
     try {
         if (video && video.srcObject) {
             video.srcObject.getTracks().forEach(track => track.stop());
+            video.srcObject = null;
         }
 
         if (!video) {
@@ -61,7 +65,7 @@ async function setupCamera(deviceId) {
             video.style.height = "240px";
             video.style.zIndex = "1000";
             video.style.border = "2px solid red";
-            video.style.display = "none"; // Hide video element
+            video.style.display = "none";
             document.body.appendChild(video);
         }
 
@@ -96,15 +100,13 @@ async function setupCamera(deviceId) {
             canvas.style.height = "480px";
             canvas.style.zIndex = "1000";
             canvas.style.border = "2px solid green";
-            canvas.style.display = "none"; // Hide video element
+            canvas.style.display = "none";
             document.body.appendChild(canvas);
             ctx = canvas.getContext("2d");
         }
 
-        // Diagnostic log
-        setInterval(() => {
-            console.log(`Video dimensions: ${video.videoWidth}x${video.videoHeight}`);
-        }, 1000);
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
 
     } catch (error) {
         console.error("Error setting up camera:", error);
@@ -142,7 +144,14 @@ async function detectPose() {
 
     if (unityInstance) {
         unityInstance.SendMessage("CameraManager", "OnReceiveVideoFrame", base64);
+
+        // One-time event to tell Unity the first frame is ready
+        if (!firstFrameSent) {
+            unityInstance.SendMessage("CameraManager", "OnCameraReady");
+            firstFrameSent = true;
+        }
     }
+
     try {
         const poses = await detector.estimatePoses(canvas);
         if (poses.length > 0) {
